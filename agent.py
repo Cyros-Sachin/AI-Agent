@@ -1,54 +1,64 @@
-import requests
-import logging
-from typing import Optional
-from config import Config
+import os
+from groq import Groq
 
-# Set up logging
-logging.basicConfig(level=Config.LOG_LEVEL)
-logger = logging.getLogger(__name__)
+# Initialize Groq client
+client = Groq(
+    api_key="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"
+)
 
-class PlanGenerator:
-    def __init__(self):
-        self.api_url = "https://api.groq.com/openai/v1/chat/completions"
-        self.headers = {
-            "Authorization": f"Bearer {Config.GROQ_API_KEY}",
-            "Content-Type": "application/json"
-        }
+def chat_with_ai(prompt):
+    response = client.chat.completions.create(
+        model="llama3-8b-8192",
+        messages=[{"role": "user", "content": prompt}],
+        temperature=0.2,
+    )
+    return response.choices[0].message.content
 
-    def generate_plan(self, task: str, context: Optional[str] = None) -> str:
-        """
-        Generate an execution plan for the given task using Groq AI.
+def execute_plan(plan):
+    print("\n🚀 Executing the Plan...")
+    try:
+        import re
+        code_blocks = re.findall(r"```python(.*?)```", plan, re.DOTALL)
+        if code_blocks:
+            for code in code_blocks:
+                print("\n🔹 Running the following code:")
+                print(code.strip())
+                exec(code.strip())
+        else:
+            print("No Python code found in the plan.")
+    except Exception as e:
+        print(f"❌ Error during execution: {e}")
+
+def main():
+    print("🤖 Welcome to Workik Task Agent!")
+    
+    while True:
+        task = input("📝 Describe the task you want me to perform:\n")
         
-        Args:
-            task: The task to accomplish
-            context: Additional context about previous attempts or requirements
-            
-        Returns:
-            The generated plan as a string
-        """
-        logger.info("🤖 Generating plan using Groq AI...")
+        # Step 1: Generate plan
+        plan = chat_with_ai(f"Generate a plan in markdown including the code to achieve: {task}")
+        print("\n📜 Here is the generated plan:\n")
+        print(plan)
         
-        messages = [
-            {"role": "system", "content": "You are a helpful AI assistant that creates detailed execution plans for technical tasks. Provide clear, executable commands with necessary explanations."},
-            {"role": "user", "content": f"Task: {task}"}
-        ]
+        # Step 2: Ask for approval
+        approval = input("\n✅ Do you approve this plan? (yes/no): ").strip().lower()
+        if approval != 'yes':
+            print("❌ Plan rejected. Let's refine it.")
+            continue
         
-        if context:
-            messages.insert(1, {"role": "assistant", "content": context})
+        # Step 3: Execute the plan
+        execute_plan(plan)
+        
+        # Step 4: Ask if successful
+        success = input("\n✅ Was the task successful? (yes/no): ").strip().lower()
+        if success == 'yes':
+            print("🎉 Task completed successfully!")
+            break
+        else:
+            # Step 5: Ask for reason and refine
+            reason = input("❓ What went wrong? Please explain:\n")
+            task = chat_with_ai(f"The previous task failed because: {reason}. Please refine the task: {task}")
+            print("\n🔄 Retrying with refined task...")
 
-        data = {
-            "model": Config.DEFAULT_MODEL,
-            "messages": messages,
-            "temperature": 0.3,
-            "max_tokens": 4000
-        }
-
-        try:
-            response = requests.post(self.api_url, headers=self.headers, json=data, timeout=30)
-            response.raise_for_status()
-            content = response.json()["choices"][0]["message"]["content"]
-            logger.debug(f"Generated plan: {content}")
-            return content
-        except requests.exceptions.RequestException as e:
-            logger.error(f"API request failed: {e}")
-            raise Exception(f"Failed to generate plan: {str(e)}")
+if __name__ == "__main__":
+    main()
